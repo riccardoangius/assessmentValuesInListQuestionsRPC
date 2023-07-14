@@ -105,4 +105,72 @@ class assessmentValuesInListQuestionsRPC extends PluginBase {
         }
     }
 
+     /**
+     * Update the information content to show the good link
+     * @params getValues
+     */
+    public function getPluginSettings($getValues=true)
+    {
+        if(!Permission::model()->hasGlobalPermission('settings','read')) {
+            throw new CHttpException(403);
+        }
+        $this->settings['information']['content']="";
+        /* test if plugins/unsecure is in noCsrfValidationRoutes : in internal for compatible LimeSurvey version */
+        if(in_array('plugins/unsecure',App()->request->noCsrfValidationRoutes)) {
+            $url = App()->getController()->createAbsoluteUrl('plugins/unsecure', array('plugin' => $this->getName(), 'function' => 'action'));
+        } else {
+            $this->settings['information']['content'].="<p class='alert alert-warning'>You need to add 'plugins/direct' to noCsrfValidationRoutes in your config file</p>";
+            $url = App()->getController()->createAbsoluteUrl('plugins/direct', array('plugin' => $this->getName(), 'function' => 'action'));
+        }
+        if(Yii::app()->getConfig("RPCInterface")=='json')
+        {
+            $this->settings['information']['content'].="<p class='alert alert-info'>".sprintf(gT("The remote url was <code>%s</code>",'unescaped'),$url)."</p>";
+            if(Yii::app()->getConfig("rpc_publish_api") == true)
+            {
+                if(floatval(Yii::app()->getConfig("versionnumber"))>=2.5)
+                {
+                    $url= App()->getController()->createAbsoluteUrl('admin/pluginhelper', array('plugin' => $this->getName(), 'sa'=>'sidebody','method'=>'actionIndex','surveyId'=>0));
+                }
+                $this->settings['information']['content'].="<p class='alert alert-warning'>".sprintf(gT("The API was published on <a href='%s'>%s</a>",'unescaped'),$url,$url)."</p>";
+            }
+        }
+        else
+        {
+            $this->settings['information']['content']="<p class='alert alert-danger'>".gT("JSON RPC is not active.")."</p>";
+        }
+        return parent::getPluginSettings($getValues);
+    }
 
+    /**
+     * Show remote control function list in 2.50
+     * Used by PluginHelper->getContent
+     * @see remotecontrol::run()
+     */
+    public function actionIndex()
+    {
+        if(Yii::app()->getConfig("RPCInterface")=='json' && Yii::app()->getConfig("rpc_publish_api"))
+        {
+            $oAdminController = new \AdminController('admin/remotecontrol');
+            Yii::import('application.helpers.remotecontrol.*');
+            Yii::setPathOfAlias('rcAddReponseCode', dirname(__FILE__));
+            Yii::import("rcAddReponseCode.RemoteControlHandler");
+            $oHandler=new \RemoteControlHandler($oAdminController);
+            $reflector = new ReflectionObject($oHandler);
+            foreach ($reflector->getMethods(ReflectionMethod::IS_PUBLIC) as $method) {
+                /* @var $method ReflectionMethod */
+                if (substr($method->getName(),0,1) !== '_') {
+                    $list[$method->getName()] = array(
+                        'description' => $method->getDocComment(),
+                        'parameters'  => $method->getParameters()
+                    );
+                }
+            }
+            ksort($list);
+            $aData['method'] = 'json';
+            $aData['list'] = $list;
+            return Yii::app()->controller->renderPartial('application.views.admin.remotecontrol.index_view', $aData, true);
+        }
+    }
+
+
+}
